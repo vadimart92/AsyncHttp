@@ -48,9 +48,6 @@
     <Compile Include="Tests.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="..\Actors\Actors.csproj">
       <Project>{c07a3fcf-6188-436e-b3e5-8b31c9853a46}</Project>
       <Name>Actors</Name>
@@ -63,6 +60,9 @@
       <Project>{26be5ee2-256a-456e-bd30-c195207d0003}</Project>
       <Name>TPL</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -1,4 +1,7 @@
-﻿namespace AsyncHttp
+﻿using System.Collections.Generic;
+using TPL;
+
+namespace AsyncHttp
 {
 	using System;
 	using System.Collections.Concurrent;
@@ -14,39 +17,44 @@
 	public class Tests
 	{
 
-		private static readonly SimpleRetryStrategy _retryStrategy = new SimpleRetryStrategy();
+		private static readonly SimpleRetryStrategy _retryStrategy = new SimpleRetryStrategy(200);
 		
 		[Test]
 		public void Actors() {
-			var requestMaker = new ActorBasedHttpRequestMaker();
-			var results = ExecuteRequests(requestMaker).TotalMilliseconds;
-			var sleepRequestMaker = new SleepActorBasedHttpRequestMaker();
-			var sleepResults = ExecuteRequests(sleepRequestMaker).TotalMilliseconds;
-			var taskSleepRequestMaker = new TaskSleepActorBasedHttpRequestMaker();
-			var taskSleepResults = ExecuteRequests(taskSleepRequestMaker).TotalMilliseconds;
+			ActorBasedHttpRequestMaker.Init();
+			//var threadsCreated = Process.GetCurrentProcess().Threads.Count;
+			ThreadPool.SetMinThreads(50, 50);
+			var results = ExecuteRequests<ActorBasedHttpRequestMaker>();
+			TestContext.WriteLine($"Time: {results:ss\\.fff}");
+			var tplResults = ExecuteRequests<TplRequestMaker>();
+			TestContext.WriteLine($"TPL Time: {tplResults:ss\\.fff}");
+			//TestContext.WriteLine($"Threads used: {Process.GetCurrentProcess().Threads.Count- threadsCreated}");
 		}
 
-		public TimeSpan ExecuteRequests(IHttpRequestMaker requestMaker) {
+		public TimeSpan ExecuteRequests<TRequestMaker>()
+		where TRequestMaker: IHttpRequestMaker, new() {
 			var results = new ConcurrentBag<(string, string)>();
-			var cts = new CancellationTokenSource();
-			var options = new ParallelOptions {
-				CancellationToken = cts.Token,
-				MaxDegreeOfParallelism = 20
-			};
-			cts.Token.ThrowIfCancellationRequested();
 			Stopwatch sw = null;
+			const int requestsCount = 1000;
 			try {
+				var tasks = new List<Task>();
 				sw = Stopwatch.StartNew();
-				Parallel.For(0, 1000, options, async number => {
-					var requestBody = Guid.NewGuid().ToString();
-					var result = await requestMaker.Execute("test.com", requestBody, _retryStrategy);
-					results.Add((requestBody, result));
-				});
+				for (int i = 0; i < requestsCount; i++) {
+					tasks.Add(Task.Run(async () => {
+						var requestBody = Guid.NewGuid().ToString();
+						var requestMaker = new TRequestMaker();
+						var result = await requestMaker.Execute("http://127.0.0.1:5000/api/LoadTest/GetData?retryCount=3&delay=800", requestBody, _retryStrategy).ConfigureAwait(false);
+						results.Add((requestBody, result));
+					})) ;
+				}
+				Task.WaitAll(tasks.ToArray());
 				sw.Stop();
-				
 			} catch (OperationCanceledException) {}
-			var validResults = results.Count(r => r.Item2.Equals(Convert.ToBase64String(Encoding.UTF8.GetBytes(r.Item1)), StringComparison.OrdinalIgnoreCase));
-			return TimeSpan.FromMilliseconds(validResults>0?sw.ElapsedMilliseconds/validResults:sw.ElapsedMilliseconds);
+			var errors = results.Any(r => !r.Item2.Equals(Convert.ToBase64String(Encoding.UTF8.GetBytes(r.Item1)), StringComparison.OrdinalIgnoreCase));
+			if (errors || results.Count != requestsCount) {
+				return TimeSpan.FromDays(1);
+			}
+			return sw.Elapsed;
 		}
 
 	}

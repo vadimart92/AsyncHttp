@@ -1,38 +1,54 @@
 ﻿using System.Threading.Tasks;
+using Akka.Actor;
 
 namespace Actors
 {
-	using System;
-	using System.Text;
-	using System.Threading;
 	using AsyncHttp;
     public class ActorBasedHttpRequestMaker : IHttpRequestMaker
     {
-
 		public async Task<string> Execute(string url, string body, IRetryStrategy retryStrategy) {
-			await Task.Delay(retryStrategy.GetRetryDelay(1));
-			return Convert.ToBase64String(Encoding.UTF8.GetBytes(body));
-		}
-
-	}
-    public class SleepActorBasedHttpRequestMaker : IHttpRequestMaker
-    {
-
-		public Task<string> Execute(string url, string body, IRetryStrategy retryStrategy) {
-			Thread.Sleep(retryStrategy.GetRetryDelay(1));
-			return Task.FromResult(Convert.ToBase64String(Encoding.UTF8.GetBytes(body)));
-		}
-
-	}
-    public class TaskSleepActorBasedHttpRequestMaker : IHttpRequestMaker
-    {
-
-		public Task<string> Execute(string url, string body, IRetryStrategy retryStrategy) {
-			return Task.Run(() => {
-				Thread.Sleep(retryStrategy.GetRetryDelay(1));
-				return Convert.ToBase64String(Encoding.UTF8.GetBytes(body));
+			return await Root.Ask<string>(new RequestActor.ExecuteRequestMsg {
+				Uri = url,
+				Body = body,
+				RetryCount = retryStrategy.GetRetryCount(),
+				RetryStrategy = retryStrategy,
+				RequestId = "{C1009747-B372-473A-9F4C-382F5E0C68FD}"
 			});
 		}
 
+	    private static ActorSystem _actorSystem;
+	    private static IActorRef Root;
+	    public static void Init() {
+			_actorSystem = ActorSystem.Create("test");
+		    Root = _actorSystem.ActorOf(Props.Create<RequestRootActor>());
+		}
+    }
+
+	public class RequestRootActor : ReceiveActor
+	{
+		public struct Cancel
+		{
+			public string RequestId { get; set; }
+		}
+
+		public RequestRootActor() {
+			Receive<RequestActor.ExecuteRequestMsg>(msg => {
+				var child = GetChild(msg.RequestId);
+				child.Forward(msg);
+			});
+			Receive<Cancel>(cancel => {
+				var child = GetChild(cancel.RequestId);
+				Context.Stop(child);
+			});
+		}
+
+		private static IActorRef GetChild(string requestId) {
+			var child = Context.Child(requestId);
+			if (child.IsNobody()) {
+				child = Context.ActorOf(Props.Create<RequestActor>());
+			}
+
+			return child;
+		}
 	}
 }

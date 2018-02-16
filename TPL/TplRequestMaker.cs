@@ -1,18 +1,17 @@
-﻿using System;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
+using Interfaces;
 
 namespace TPL
 {
 	using System.Collections.Generic;
 	using System.Net;
 	using AsyncHttp;
-	using Interfaces;
 
-	public class Class1 : IHttpRequestMaker
+	public class TplRequestMaker : IHttpRequestMaker
 	{
 
-		private int _retryAttempt = 0;
-		private int _retryCount = 0;
+		private int _retryAttempt;
+		private int _retryCount;
 		private string _retryException ;
 		private IRetryStrategy _retryStrategy;
 
@@ -20,28 +19,30 @@ namespace TPL
 			_retryStrategy = retryStrategy;
 			_retryCount = retryStrategy.GetRetryCount();
 			return Task.Run(() => {
-				HttpWebRequest webRequest = (HttpWebRequest)WebRequest.Create(url);
-				webRequest.Method = "GET";
-				webRequest.AppendHeaders(new Dictionary<string, string> {
-					["Content-Type"] = "application/json"
-				}).AppendBody(body);
-				HttpWebResponse webResponse = GetResponse(webRequest);
+				HttpWebResponse webResponse = GetResponse(url, body);
 				return webResponse.GetResponseStream().GetContent();
 			});
 		}
 
-		private HttpWebResponse GetResponse(WebRequest webRequest) {
+		
+
+		private HttpWebResponse GetResponse(string url, string body) {
 			_retryAttempt = 0;
 			HttpWebResponse response = null;
 			while (response == null) {
 				try {
+					var webRequest = url.CreateRequest(body);
 					response = (HttpWebResponse)webRequest.GetResponse();
 				} catch (WebException e) {
 					_retryException = e.ToString();
 					response = e.Response as HttpWebResponse;
 					if (_retryAttempt < _retryCount) {
-						Task.Delay(_retryStrategy.GetRetryDelay(_retryAttempt)).Wait();
+						var retryDelay = _retryStrategy.GetRetryDelay(_retryAttempt);
+						var delay = Task.Delay(retryDelay);
+						delay.ConfigureAwait(false);
+						delay.Wait();
 						_retryAttempt++;
+						response = null;
 					} else {
 						if (response == null) {
 							throw;
