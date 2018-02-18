@@ -6,6 +6,7 @@
 	using System.Linq;
 	using System.Net;
 	using System.Text;
+	using System.Threading.Tasks;
 
 	#region Class: HttpWebExtensions
 
@@ -54,6 +55,26 @@
 				}
 			}
 		}
+		public static async Task<string> GetContentAsync(this Stream source) {
+			if (source == null) {
+				throw new Exception("source");
+			}
+			using (source) {
+				using (var sr = new StreamReader(source)) {
+					return await sr.ReadToEndAsync().ConfigureAwait(false);
+				}
+			}
+		}
+		public static async Task AppendBodyAsync(this WebRequest source, string body) {
+			var bodyBytes = new UTF8Encoding(false).GetBytes(body);
+			source.ContentLength = bodyBytes.Length;
+			var requestStream = await source.GetRequestStreamAsync().ConfigureAwait(false);
+			using (var sw = new StreamWriter(requestStream)) {
+				await sw.WriteAsync(body).ConfigureAwait(false);
+				await sw.FlushAsync();
+			}
+		}
+
 		/// <summary>
 		/// Writes body to HttpWebRequest request stream.
 		/// </summary>
@@ -64,16 +85,15 @@
 			if (body.IsNullOrEmpty()) {
 				return source;
 			}
-
 			var bodyBytes = new UTF8Encoding(false).GetBytes(body);
 			source.ContentLength = bodyBytes.Length;
 			using (Stream requestStream = source.GetRequestStream()) {
 				requestStream.Write(bodyBytes, 0, bodyBytes.Length);
 				requestStream.Flush();
 			}
-
 			return source;
 		}
+
 
 		/// <summary>
 		/// Appends header parameters to request.

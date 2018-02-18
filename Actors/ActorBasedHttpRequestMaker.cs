@@ -3,24 +3,25 @@ using Akka.Actor;
 
 namespace Actors
 {
+	using System;
 	using AsyncHttp;
     public class ActorBasedHttpRequestMaker : IHttpRequestMaker
     {
 		public async Task<string> Execute(string url, string body, IRetryStrategy retryStrategy) {
-			return await Root.Ask<string>(new RequestActor.ExecuteRequestMsg {
+			return await _root.Ask<string>(new RequestActor.ExecuteRequestMsg {
 				Uri = url,
 				Body = body,
 				RetryCount = retryStrategy.GetRetryCount(),
 				RetryStrategy = retryStrategy,
-				RequestId = "{C1009747-B372-473A-9F4C-382F5E0C68FD}"
-			});
+				RequestId = Guid.NewGuid().ToString()
+			}).ConfigureAwait(false);
 		}
 
 	    private static ActorSystem _actorSystem;
-	    private static IActorRef Root;
+	    private static IActorRef _root;
 	    public static void Init() {
 			_actorSystem = ActorSystem.Create("test");
-		    Root = _actorSystem.ActorOf(Props.Create<RequestRootActor>());
+		    _root = _actorSystem.ActorOf(Props.Create<RequestRootActor>());
 		}
     }
 

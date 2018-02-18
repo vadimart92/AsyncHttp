@@ -6,6 +6,10 @@ using Interfaces;
 
 namespace Actors
 {
+	using System.Diagnostics;
+	using System.IO;
+	using System.Threading.Tasks;
+
 	public class RequestActor:ReceiveActor
 	{
 		internal class ExecuteRequestMsg
@@ -16,8 +20,8 @@ namespace Actors
 			public IRetryStrategy RetryStrategy { get; set; }
 			public string RequestId { get; set; }
 		}
-		private struct RetryCall { }
-		private struct GetResponse { }
+		private class RetryCall { }
+		private class GetResponse { }
 		private class RetryAfterDelay{}
 		private class ExecutionError
 		{
@@ -38,40 +42,56 @@ namespace Actors
 		}
 
 		private void Working() {
-			Receive<GetResponse>(msg => {
-				_currentRequest.GetResponseAsync().ContinueWith(task => {
+			Receive<WebRequest>(msg => {
+				Debug.WriteLine($"Receive WebRequest");
+				msg.GetResponseAsync().ContinueWith(task => {
 					_currentRequest = null;
 					if (task.IsFaulted) {
 						return new ExecutionError { Exception =task.Exception };
 					}
 					try {
-						var response = task.Result.GetResponseStream().GetContent();
-						return (object)new ExecutionSuccess { Result = response };
-					}
-					catch (WebException e) {
+						var webResponse = task.Result;
+						return (object)webResponse;
+					} catch (WebException e) {
 						return new ExecutionError { Exception = e };
 					}
-				}).PipeTo(Self);
+				}, TaskContinuationOptions.ExecuteSynchronously).PipeTo(Self);
+			});
+			Receive<WebResponse>(webResponse => {
+				Debug.WriteLine("Receive WebResponse");
+				webResponse.GetResponseStream().GetContentAsync().ContinueWith(task => {
+					if (task.IsFaulted) {
+						return (object)new ExecutionError { Exception = task.Exception };
+					}
+					var response = task.Result;
+					webResponse.Close();
+					return new ExecutionSuccess { Result = response };
+				}, TaskContinuationOptions.ExecuteSynchronously).PipeTo(Self);
+				
 			});
 			Receive<RetryAfterDelay>(call => {
+				Debug.WriteLine($"Receive RetryAfterDelay");
 				_retryAttempt++;
 				var delay = _requestData.RetryStrategy.GetRetryDelay(_retryAttempt);
 				Context.System.Scheduler.ScheduleTellOnce(delay, Self, new RetryCall(), Self);
 			});
 			Receive<RetryCall>(call => {
+				Debug.WriteLine("Receive RetryCall");
 				ExecuteRequest();
 			});
 			Receive<ExecutionSuccess>(result => {
-				UnbecomeStacked();
+				Debug.WriteLine("Receive ExecutionSuccess");
 				_sender.Tell(result.Result);
+				Context.Stop(Self);
 			});
 			Receive<ExecutionError>(result => {
+				Debug.WriteLine("Receive ExecutionError");
 				if (_retryAttempt < _requestData.RetryCount) {
 					Self.Tell(new RetryAfterDelay(), Self);
 					return;
 				}
-				UnbecomeStacked();
-				_sender.Tell(result.Exception);
+				_sender.Tell(result.Exception.ToString());
+				Context.Stop(Self);
 			});
 		}
 
@@ -85,14 +105,13 @@ namespace Actors
 			Receive<ExecuteRequestMsg>(m => {
 				_sender = Sender;
 				_requestData = m;
-				BecomeStacked(Working);
+				Become(Working);
 				ExecuteRequest();
 			});
 		}
 
 		private void ExecuteRequest() {
-			_currentRequest = _requestData.Uri.CreateRequest(_requestData.Body);
-			Self.Tell(new GetResponse());
+			_requestData.Uri.CreateRequestAsync(_requestData.Body).PipeTo(Self);
 		}
 	}
 }

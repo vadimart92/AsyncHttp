@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Hosting;
 
 namespace WebService
 {
+	using System.Linq;
+
 	public class Program
 	{
 		public static void Main(string[] args)
@@ -13,9 +15,11 @@ namespace WebService
 
 		public static IWebHost BuildWebHost(string[] args) =>
 			WebHost.CreateDefaultBuilder(args)
+				.UseEnvironment(EnvironmentName.Production)
 				.UseStartup<Startup>()
 				.UseKestrel(options => {
-					options.Listen(IPAddress.Loopback, 5000);
+					var localIp = Dns.GetHostEntry(Dns.GetHostName()).AddressList.First(i=>!i.IsIPv6LinkLocal);
+					options.Listen(localIp, 5000);
 				})
 				.Build();
 	}

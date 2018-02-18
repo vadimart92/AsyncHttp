@@ -17,42 +17,57 @@ namespace AsyncHttp
 	public class Tests
 	{
 
+		private static string Url = "http://tscore-dev-13:5000/api/ping";
+
 		private static readonly SimpleRetryStrategy _retryStrategy = new SimpleRetryStrategy(200);
-		
+
+		private static string _payload = new String('1', 1_000_000);
+
 		[Test]
-		public void Actors() {
+		public async Task Actors() {
 			ActorBasedHttpRequestMaker.Init();
 			//var threadsCreated = Process.GetCurrentProcess().Threads.Count;
-			ThreadPool.SetMinThreads(50, 50);
-			var results = ExecuteRequests<ActorBasedHttpRequestMaker>();
-			TestContext.WriteLine($"Time: {results:ss\\.fff}");
-			var tplResults = ExecuteRequests<TplRequestMaker>();
-			TestContext.WriteLine($"TPL Time: {tplResults:ss\\.fff}");
-			//TestContext.WriteLine($"Threads used: {Process.GetCurrentProcess().Threads.Count- threadsCreated}");
+			ThreadPool.SetMinThreads(100, 500);
+			ThreadPool.SetMaxThreads(100, 500);
+			Url = "http://tscore-dev-13:5000/api/LoadTest/GetData?retryCount=1&delay=1000&errorCode=407";
+			//Url = "http://v-artemchuk:5000/api/LoadTest/GetData?retryCount=1&delay=1000&errorCode=407";
+			await RunTests();
 		}
 
-		public TimeSpan ExecuteRequests<TRequestMaker>()
-		where TRequestMaker: IHttpRequestMaker, new() {
-			var results = new ConcurrentBag<(string, string)>();
+		private async Task RunTests() {
+			TestContext.WriteLine($"URL: {Url}");
+			GC.Collect(2, GCCollectionMode.Forced, true, true);
+			GC.Collect(2, GCCollectionMode.Forced, true, true);
+			var tplResults = await ExecuteRequests<TplRequestMaker>();
+			TestContext.WriteLine($"TPL Time: {tplResults:ss\\.fff}");
+			GC.Collect(2, GCCollectionMode.Forced, true, true);
+			GC.Collect(2, GCCollectionMode.Forced, true, true);
+			var results = await ExecuteRequests<ActorBasedHttpRequestMaker>();
+			TestContext.WriteLine($"Time: {results:ss\\.fff}");
+		}
+
+		public async Task<TimeSpan> ExecuteRequests<TRequestMaker>()
+				where TRequestMaker: IHttpRequestMaker, new() {
+			var results = new ConcurrentBag<(string, bool)>();
 			Stopwatch sw = null;
-			const int requestsCount = 1000;
+			const int requestsCount = 50;
 			try {
 				var tasks = new List<Task>();
 				sw = Stopwatch.StartNew();
 				for (int i = 0; i < requestsCount; i++) {
-					tasks.Add(Task.Run(async () => {
-						var requestBody = Guid.NewGuid().ToString();
-						var requestMaker = new TRequestMaker();
-						var result = await requestMaker.Execute("http://127.0.0.1:5000/api/LoadTest/GetData?retryCount=3&delay=800", requestBody, _retryStrategy).ConfigureAwait(false);
-						results.Add((requestBody, result));
-					})) ;
+					var requestBody = $"{Guid.NewGuid()}{_payload}";
+					var requestMaker = new TRequestMaker();
+					tasks.Add(requestMaker.Execute(Url, requestBody, _retryStrategy).ContinueWith(t => {
+						bool success = t.Result != null && t.Result.Equals(requestBody, StringComparison.OrdinalIgnoreCase);
+						results.Add((requestBody, success));
+					}, TaskContinuationOptions.ExecuteSynchronously)) ;
 				}
-				Task.WaitAll(tasks.ToArray());
+				await Task.WhenAll(tasks.ToArray());
 				sw.Stop();
 			} catch (OperationCanceledException) {}
-			var errors = results.Any(r => !r.Item2.Equals(Convert.ToBase64String(Encoding.UTF8.GetBytes(r.Item1)), StringComparison.OrdinalIgnoreCase));
-			if (errors || results.Count != requestsCount) {
-				return TimeSpan.FromDays(1);
+			var errors = results.Where(r => !r.Item2).ToList();
+			if (errors.Any() || results.Count != requestsCount) {
+				throw new Exception();
 			}
 			return sw.Elapsed;
 		}

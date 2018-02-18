@@ -5,9 +5,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace WebService
 {
+	using Microsoft.Extensions.Logging;
 
-
-    public class Startup
+	public class Startup
     {
         public Startup(IConfiguration configuration)
         {
@@ -19,6 +19,7 @@ namespace WebService
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services) {
 	        services.AddMemoryCache();
+			services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Warning));
 			services.AddMvc(options =>
 			{
 				options.InputFormatters.Insert(0, new RawRequestBodyInputFormatter());
@@ -32,7 +33,6 @@ namespace WebService
             {
                 app.UseDeveloperExceptionPage();
             }
-
             app.UseMvc();
         }
     }
