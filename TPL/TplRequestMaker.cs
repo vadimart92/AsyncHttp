@@ -27,7 +27,7 @@ namespace TPL
 			HttpWebResponse response = null;
 			while (response == null) {
 				try {
-					var webRequest = url.CreateRequest(body);
+					var webRequest = await url.CreateRequestAsync(body);
 					response = (HttpWebResponse)webRequest.GetResponse();
 					var content = response.GetResponseStream().GetContent();
 					response.Close();

@@ -17,25 +17,24 @@ namespace AsyncHttp
 	public class Tests
 	{
 
-		private static string Url = "http://tscore-dev-13:5000/api/ping";
+		private static string _url;
 
 		private static readonly SimpleRetryStrategy _retryStrategy = new SimpleRetryStrategy(200);
 
-		private static string _payload = new String('1', 1_000_000);
+		private static readonly string _payload = new String('1', 1_000_000);
 
 		[Test]
 		public async Task Actors() {
 			ActorBasedHttpRequestMaker.Init();
 			//var threadsCreated = Process.GetCurrentProcess().Threads.Count;
-			ThreadPool.SetMinThreads(100, 500);
-			ThreadPool.SetMaxThreads(100, 500);
-			Url = "http://tscore-dev-13:5000/api/LoadTest/GetData?retryCount=1&delay=1000&errorCode=407";
-			//Url = "http://v-artemchuk:5000/api/LoadTest/GetData?retryCount=1&delay=1000&errorCode=407";
+			ThreadPool.SetMinThreads(15, 500);
+			//ThreadPool.SetMaxThreads(15, 500);
+			_url = "http://127.0.0.1:5001/api/LoadTest/GetData?retryCount=1&delay=1000&errorCode=407";
 			await RunTests();
 		}
 
 		private async Task RunTests() {
-			TestContext.WriteLine($"URL: {Url}");
+			TestContext.WriteLine($"URL: {_url}");
 			GC.Collect(2, GCCollectionMode.Forced, true, true);
 			GC.Collect(2, GCCollectionMode.Forced, true, true);
 			var tplResults = await ExecuteRequests<TplRequestMaker>();
@@ -50,14 +49,14 @@ namespace AsyncHttp
 				where TRequestMaker: IHttpRequestMaker, new() {
 			var results = new ConcurrentBag<(string, bool)>();
 			Stopwatch sw = null;
-			const int requestsCount = 50;
+			const int requestsCount = 15;
 			try {
 				var tasks = new List<Task>();
 				sw = Stopwatch.StartNew();
 				for (int i = 0; i < requestsCount; i++) {
 					var requestBody = $"{Guid.NewGuid()}{_payload}";
 					var requestMaker = new TRequestMaker();
-					tasks.Add(requestMaker.Execute(Url, requestBody, _retryStrategy).ContinueWith(t => {
+					tasks.Add(requestMaker.Execute(_url, requestBody, _retryStrategy).ContinueWith(t => {
 						bool success = t.Result != null && t.Result.Equals(requestBody, StringComparison.OrdinalIgnoreCase);
 						results.Add((requestBody, success));
 					}, TaskContinuationOptions.ExecuteSynchronously)) ;

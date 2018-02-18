@@ -42,20 +42,9 @@ namespace Actors
 		}
 
 		private void Working() {
-			Receive<WebRequest>(msg => {
+			Receive<HttpWebRequest>(msg => {
 				Debug.WriteLine($"Receive WebRequest");
-				msg.GetResponseAsync().ContinueWith(task => {
-					_currentRequest = null;
-					if (task.IsFaulted) {
-						return new ExecutionError { Exception =task.Exception };
-					}
-					try {
-						var webResponse = task.Result;
-						return (object)webResponse;
-					} catch (WebException e) {
-						return new ExecutionError { Exception = e };
-					}
-				}, TaskContinuationOptions.ExecuteSynchronously).PipeTo(Self);
+				msg.GetResponseAsync().PipeTo(Self);
 			});
 			Receive<WebResponse>(webResponse => {
 				Debug.WriteLine("Receive WebResponse");
@@ -84,13 +73,13 @@ namespace Actors
 				_sender.Tell(result.Result);
 				Context.Stop(Self);
 			});
-			Receive<ExecutionError>(result => {
+			Receive<Status.Failure>(result => {
 				Debug.WriteLine("Receive ExecutionError");
 				if (_retryAttempt < _requestData.RetryCount) {
 					Self.Tell(new RetryAfterDelay(), Self);
 					return;
 				}
-				_sender.Tell(result.Exception.ToString());
+				_sender.Tell(result.Cause.ToString());
 				Context.Stop(Self);
 			});
 		}

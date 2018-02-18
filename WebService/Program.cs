@@ -20,6 +20,7 @@ namespace WebService
 				.UseKestrel(options => {
 					var localIp = Dns.GetHostEntry(Dns.GetHostName()).AddressList.First(i=>!i.IsIPv6LinkLocal);
 					options.Listen(localIp, 5000);
+					options.Listen(IPAddress.Loopback, 5001);
 				})
 				.Build();
 	}

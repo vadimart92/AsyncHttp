@@ -71,7 +71,7 @@
 			var requestStream = await source.GetRequestStreamAsync().ConfigureAwait(false);
 			using (var sw = new StreamWriter(requestStream)) {
 				await sw.WriteAsync(body).ConfigureAwait(false);
-				await sw.FlushAsync();
+				await sw.FlushAsync().ConfigureAwait(false);
 			}
 		}
 
